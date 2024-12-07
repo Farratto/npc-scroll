@@ -1,17 +1,27 @@
+--
+-- Different way to call custom functions when adding entry to CT in 5E ruleset
+--
+
+local fonRecordTypeEvent;
 function onInit()
-  CombatRecordManager.setRecordTypePostAddCallback("npc", proxy(CombatManager2.onNPCPostAdd, upcastCantrips));
+  if Session.IsHost then
+    fonRecordTypeEvent = CombatRecordManager.onRecordTypeEvent;
+    CombatRecordManager.onRecordTypeEvent = onRecordTypeEventNS;
+  end
+end
+function onClose()
+  if Session.IsHost then
+    CombatRecordManager.onRecordTypeEvent = fonRecordTypeEvent;
+  end
 end
 
 --
 -- Intercepts calls to subject function and executes an advice after the call.
 --
 
-function proxy(subjectFn, afterAdvice)
-  return function(...)
-    local returnValue = subjectFn(...);
-    afterAdvice(...);
-    return returnValue;
-  end
+function onRecordTypeEventNS(sRecordType, tCustom)
+  fonRecordTypeEvent(sRecordType, tCustom);
+  upcastCantrips(tCustom);
 end
 
 --
@@ -23,7 +33,7 @@ function upcastCantrips(tCustom)
   local nodeEntry = tCustom.nodeCT;
   local notches = getNbNotches(getSpellcasterLevel(nodeEntry));
   if notches < 1 then return end
-  
+
   forEachCantrip(nodeEntry, function(attackLine, setValue)
     if attackLine:find("DMG:") or attackLine:find("HEAL:") then
       setValue(updateNbDice(notches, attackLine));
@@ -74,7 +84,8 @@ function forEachCantrip(nodeEntry, f)
   for _, spellTrait in pairs({"spells", "innatespells"}) do
     for _, nodePower in pairs(DB.getChildren(nodeEntry, spellTrait)) do
       local attackLine = DB.getValue(nodePower, "value", "");
-      if attackLine:find("cantrip") then
+	  local attackLineLower = string.lower(attackLine);
+      if attackLineLower:find("cantrip") then
         local setValue = function(...) DB.setValue(nodePower, "value", "string", ...) end
         f(attackLine, setValue);
       end
